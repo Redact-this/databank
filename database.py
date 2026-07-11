@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PAGE_SIZE = 50
-EXPORT_LIMIT = 100
+EXPORT_LIMIT = 100_000
 
 DISPLAY_COLUMNS = [
     "Naam",
@@ -17,11 +17,30 @@ DISPLAY_COLUMNS = [
     "Provincie",
     "Boekjaar",
     "Datum einde boekjaar",
+    "Bestandsnaam",
     "Winst/verlies van het boekjaar (9904)",
+    "Winst/verlies vorig boekjaar (9904)",
     "Bedrijfswinst/-verlies (9901)",
+    "Bedrijfswinst/-verlies vorig jaar (9901)",
     "Financiële opbrengsten totaal",
+    "Financiële opbrengsten totaal vorig jaar",
     "Netto financieel resultaat",
+    "Netto financieel resultaat vorig jaar",
+    "Verhouding fin. opbrengsten / vorderingen",
+    "Verhouding fin. opbrengsten / vorderingen vorig jaar",
+    "Vorderingen op verbonden ondernemingen (9291)",
+    "Vorderingen op verbonden ondernemingen vorig jaar (9291)",
+    "Kosten van schulden (9461)",
+    "Kosten van schulden vorig jaar (9461)",
+    "Opbrengsten uit financiële vaste activa (9421)",
+    "Opbrengsten uit financiële vaste activa vorig jaar (9421)",
+    "Opbrengsten uit vlottende activa (9431)",
+    "Opbrengsten uit vlottende activa vorig jaar (9431)",
+    "Andere financiële opbrengsten (9441)",
+    "Andere financiële opbrengsten vorig jaar (9441)",
 ]
+
+NUMBER_COLUMNS = DISPLAY_COLUMNS[7:]
 
 SORTS = {
     "Naam (A–Z)": 'd."Naam" COLLATE NOCASE ASC, d."Boekjaar" DESC',
@@ -119,4 +138,3 @@ def export_csv(
         writer.writerows(rows)
     data = ("\ufeff" + output.getvalue()).encode("utf-8")
     return data, min(total, EXPORT_LIMIT), total > EXPORT_LIMIT
-
