@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PAGE_SIZE = 50
-EXPORT_LIMIT = 100_000
+EXPORT_LIMIT = 100
 
 DISPLAY_COLUMNS = [
     "Naam",
