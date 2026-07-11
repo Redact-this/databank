@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PAGE_SIZE = 50
-EXPORT_LIMIT = 100_000
+EXPORT_LIMIT = 100
 
 DISPLAY_COLUMNS = [
     "Naam",
@@ -39,21 +39,6 @@ DISPLAY_COLUMNS = [
     "Andere financiële opbrengsten (9441)",
     "Andere financiële opbrengsten vorig jaar (9441)",
 ]
-
-SORTS = {
-    "Naam (A–Z)": (
-        'CASE WHEN d."Naam" IS NULL OR TRIM(d."Naam") = \'\' THEN 1 ELSE 0 END, '
-        'd."Naam" COLLATE NOCASE ASC, d."Boekjaar" DESC'
-    ),
-    "Nieuwste boekjaar": 'd."Boekjaar" DESC, d."Naam" COLLATE NOCASE ASC',
-    "Hoogste winst": 'd."Winst/verlies van het boekjaar (9904)" DESC',
-    "Grootste verlies": (
-        'CASE WHEN d."Winst/verlies van het boekjaar (9904)" IS NULL '
-        'THEN 1 ELSE 0 END, d."Winst/verlies van het boekjaar (9904)" ASC'
-    ),
-    "Hoogste bedrijfsresultaat": 'd."Bedrijfswinst/-verlies (9901)" DESC',
-}
-
 
 def connect(db: Path) -> sqlite3.Connection:
     con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro&immutable=1", uri=True)
@@ -105,12 +90,41 @@ def build_query(search: str, year: str, province: str) -> tuple[str, list[object
     return sql, params
 
 
+def build_order(sort_column: str, sort_direction: str) -> str:
+    """Bouw een veilige ORDER BY voor sortering over de volledige databank."""
+    if sort_column not in DISPLAY_COLUMNS:
+        sort_column = "Naam"
+    direction = "DESC" if sort_direction == "Aflopend" else "ASC"
+    column = sort_column.replace('"', '""')
+    parts = [
+        f'CASE WHEN d."{column}" IS NULL OR CAST(d."{column}" AS TEXT) = \'\' '
+        "THEN 1 ELSE 0 END ASC",
+        f'd."{column}" COLLATE NOCASE {direction}',
+    ]
+    if sort_column != "Naam":
+        parts.extend([
+            'CASE WHEN d."Naam" IS NULL OR TRIM(d."Naam") = \'\' '
+            "THEN 1 ELSE 0 END ASC",
+            'd."Naam" COLLATE NOCASE ASC',
+        ])
+    if sort_column != "Boekjaar":
+        parts.append('d."Boekjaar" DESC')
+    parts.append("d.rowid ASC")
+    return ", ".join(parts)
+
+
 def fetch_page(
-    db: Path, search: str, year: str, province: str, sort: str, page: int
+    db: Path,
+    search: str,
+    year: str,
+    province: str,
+    sort_column: str,
+    sort_direction: str,
+    page: int,
 ) -> tuple[list[dict[str, object]], int, int]:
     from_sql, params = build_query(search, year, province)
     select = ", ".join(f'd."{column}"' for column in DISPLAY_COLUMNS)
-    order = SORTS.get(sort, SORTS["Naam (A–Z)"])
+    order = build_order(sort_column, sort_direction)
 
     with connect(db) as con:
         total = con.execute("SELECT COUNT(*) " + from_sql, params).fetchone()[0]
@@ -124,11 +138,16 @@ def fetch_page(
 
 
 def export_csv(
-    db: Path, search: str, year: str, province: str, sort: str
+    db: Path,
+    search: str,
+    year: str,
+    province: str,
+    sort_column: str,
+    sort_direction: str,
 ) -> tuple[bytes, int, bool]:
     from_sql, params = build_query(search, year, province)
     select = ", ".join(f'd."{column}"' for column in DISPLAY_COLUMNS)
-    order = SORTS.get(sort, SORTS["Naam (A–Z)"])
+    order = build_order(sort_column, sort_direction)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";")
     writer.writerow(DISPLAY_COLUMNS)

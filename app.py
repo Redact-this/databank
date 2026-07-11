@@ -10,7 +10,6 @@ import streamlit as st
 
 from database import (
     DISPLAY_COLUMNS,
-    SORTS,
     export_csv,
     fetch_page,
     filter_choices,
@@ -82,13 +81,24 @@ years, provinces = filter_choices(db)
 
 if "page" not in st.session_state:
     st.session_state.page = 1
-if "filters" not in st.session_state:
-    st.session_state.filters = {
-        "search": "", "year": "Alle", "province": "Alle", "sort": "Naam (A–Z)"
-    }
+filter_defaults = {
+    "search": "",
+    "year": "Alle",
+    "province": "Alle",
+    "sort_column": "Naam",
+    "sort_direction": "Oplopend",
+}
+stored_filters = st.session_state.get("filters", {})
+st.session_state.filters = {
+    key: stored_filters.get(key, default) for key, default in filter_defaults.items()
+}
+if st.session_state.filters["year"] not in years:
+    st.session_state.filters["year"] = "Alle"
+if st.session_state.filters["province"] not in provinces:
+    st.session_state.filters["province"] = "Alle"
 
 with st.form("search_form"):
-    col1, col2, col3, col4 = st.columns([3, 1, 1.5, 1.5])
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1.5, 2, 1.2])
     with col1:
         search = st.text_input(
             "Bedrijfsnaam, ondernemingsnummer of postcode",
@@ -106,16 +116,27 @@ with st.form("search_form"):
             index=provinces.index(st.session_state.filters["province"]),
         )
     with col4:
-        sort = st.selectbox(
-            "Sortering",
-            list(SORTS),
-            index=list(SORTS).index(st.session_state.filters["sort"]),
+        sort_column = st.selectbox(
+            "Sorteer volledige databank op",
+            DISPLAY_COLUMNS,
+            index=DISPLAY_COLUMNS.index(st.session_state.filters["sort_column"]),
+        )
+    with col5:
+        directions = ["Oplopend", "Aflopend"]
+        sort_direction = st.selectbox(
+            "Volgorde",
+            directions,
+            index=directions.index(st.session_state.filters["sort_direction"]),
         )
     submitted = st.form_submit_button("Zoeken", type="primary")
 
 if submitted:
     st.session_state.filters = {
-        "search": search, "year": year, "province": province, "sort": sort
+        "search": search,
+        "year": year,
+        "province": province,
+        "sort_column": sort_column,
+        "sort_direction": sort_direction,
     }
     st.session_state.page = 1
 
@@ -124,6 +145,10 @@ rows, total, last_page = fetch_page(db, **active, page=st.session_state.page)
 st.session_state.page = min(st.session_state.page, last_page)
 st.markdown(
     f"**{total:,} resultaten** — pagina {st.session_state.page} van {last_page}".replace(",", ".")
+)
+st.caption(
+    "De sortering hierboven geldt voor alle resultaten. Een klik op een tabelkop "
+    "herschikt alleen de 50 rijen van de huidige pagina."
 )
 
 frame = pd.DataFrame(rows, columns=DISPLAY_COLUMNS)
@@ -158,7 +183,9 @@ with next_col:
         st.rerun()
 
 st.subheader("Resultaten exporteren")
-st.caption("De CSV bevat maximaal 100.000 rijen. Verfijn de filters voor grotere selecties.")
+st.caption(
+    "De CSV bevat maximaal de eerste 100 resultaten volgens de gekozen filters en sortering."
+)
 if st.button("Maak CSV van deze selectie"):
     with st.spinner("CSV wordt aangemaakt…"):
         csv_data, exported, truncated = export_csv(db, **active)
