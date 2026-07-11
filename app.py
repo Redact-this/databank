@@ -140,7 +140,7 @@ with next_col:
         st.rerun()
 
 st.subheader("Resultaten exporteren")
-st.caption("De CSV bevat maximaal 100.000 rijen. Verfijn de filters voor grotere selecties.")
+st.caption("De CSV bevat maximaal 100 rijen. Verfijn de filters voor grotere selecties.")
 if st.button("Maak CSV van deze selectie"):
     with st.spinner("CSV wordt aangemaakt…"):
         csv_data, exported, truncated = export_csv(db, **active)
