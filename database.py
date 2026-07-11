@@ -41,10 +41,16 @@ DISPLAY_COLUMNS = [
 ]
 
 SORTS = {
-    "Naam (A–Z)": 'd."Naam" COLLATE NOCASE ASC, d."Boekjaar" DESC',
+    "Naam (A–Z)": (
+        'CASE WHEN d."Naam" IS NULL OR TRIM(d."Naam") = \'\' THEN 1 ELSE 0 END, '
+        'd."Naam" COLLATE NOCASE ASC, d."Boekjaar" DESC'
+    ),
     "Nieuwste boekjaar": 'd."Boekjaar" DESC, d."Naam" COLLATE NOCASE ASC',
     "Hoogste winst": 'd."Winst/verlies van het boekjaar (9904)" DESC',
-    "Grootste verlies": 'd."Winst/verlies van het boekjaar (9904)" ASC',
+    "Grootste verlies": (
+        'CASE WHEN d."Winst/verlies van het boekjaar (9904)" IS NULL '
+        'THEN 1 ELSE 0 END, d."Winst/verlies van het boekjaar (9904)" ASC'
+    ),
     "Hoogste bedrijfsresultaat": 'd."Bedrijfswinst/-verlies (9901)" DESC',
 }
 
