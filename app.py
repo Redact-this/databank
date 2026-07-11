@@ -8,7 +8,14 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from database import DISPLAY_COLUMNS, SORTS, export_csv, fetch_page, filter_choices
+from database import (
+    DISPLAY_COLUMNS,
+    NUMBER_COLUMNS,
+    SORTS,
+    export_csv,
+    fetch_page,
+    filter_choices,
+)
 
 
 DEFAULT_DATA_URL = (
@@ -121,12 +128,14 @@ st.markdown(
 )
 
 frame = pd.DataFrame(rows, columns=DISPLAY_COLUMNS)
-number_columns = DISPLAY_COLUMNS[6:]
 st.dataframe(
     frame,
     hide_index=True,
     use_container_width=True,
-    column_config={column: st.column_config.NumberColumn(column, format="%.2f") for column in number_columns},
+    column_config={
+        column: st.column_config.NumberColumn(column, format="%.2f")
+        for column in NUMBER_COLUMNS
+    },
 )
 
 previous, next_col, spacer = st.columns([1, 1, 6])
@@ -140,7 +149,7 @@ with next_col:
         st.rerun()
 
 st.subheader("Resultaten exporteren")
-st.caption("De CSV bevat maximaal 100 rijen. Verfijn de filters voor grotere selecties.")
+st.caption("De CSV bevat maximaal 100.000 rijen. Verfijn de filters voor grotere selecties.")
 if st.button("Maak CSV van deze selectie"):
     with st.spinner("CSV wordt aangemaakt…"):
         csv_data, exported, truncated = export_csv(db, **active)
