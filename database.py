@@ -40,8 +40,6 @@ DISPLAY_COLUMNS = [
     "Andere financiële opbrengsten vorig jaar (9441)",
 ]
 
-NUMBER_COLUMNS = DISPLAY_COLUMNS[7:]
-
 SORTS = {
     "Naam (A–Z)": 'd."Naam" COLLATE NOCASE ASC, d."Boekjaar" DESC',
     "Nieuwste boekjaar": 'd."Boekjaar" DESC, d."Naam" COLLATE NOCASE ASC',

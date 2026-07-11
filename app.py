@@ -10,7 +10,6 @@ import streamlit as st
 
 from database import (
     DISPLAY_COLUMNS,
-    NUMBER_COLUMNS,
     SORTS,
     export_csv,
     fetch_page,
@@ -128,13 +127,23 @@ st.markdown(
 )
 
 frame = pd.DataFrame(rows, columns=DISPLAY_COLUMNS)
+text_columns = {
+    "Naam",
+    "Ondernemingsnummer",
+    "Postcode",
+    "Provincie",
+    "Boekjaar",
+    "Datum einde boekjaar",
+    "Bestandsnaam",
+}
+number_columns = [column for column in DISPLAY_COLUMNS if column not in text_columns]
 st.dataframe(
     frame,
     hide_index=True,
     use_container_width=True,
     column_config={
         column: st.column_config.NumberColumn(column, format="%.2f")
-        for column in NUMBER_COLUMNS
+        for column in number_columns
     },
 )
 
