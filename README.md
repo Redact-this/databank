@@ -1,7 +1,4 @@
-# Jaarrekeningen Databank
 
-Publieke Streamlit-zoekinterface voor financiële kerncijfers uit Belgische
-jaarrekeningen.
 
 ## Data
 
