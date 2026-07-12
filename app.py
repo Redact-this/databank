@@ -15,9 +15,13 @@ import streamlit as st
 
 from database import (
     DISPLAY_COLUMNS,
+    NUMBER_COLUMNS,
+    VALUE_FILTER_NONE,
+    VALUE_FILTER_OPERATORS,
     export_csv,
     fetch_page,
     filter_choices,
+    parse_number_filter_value,
 )
 
 
@@ -145,6 +149,9 @@ filter_defaults = {
     "province": "Alle",
     "sort_column": "Naam",
     "sort_direction": "Oplopend",
+    "value_filter_column": VALUE_FILTER_NONE,
+    "value_filter_operator": "Niet leeg",
+    "value_filter_value": "",
 }
 stored_filters = st.session_state.get("filters", {})
 st.session_state.filters = {
@@ -154,6 +161,11 @@ if st.session_state.filters["year"] not in years:
     st.session_state.filters["year"] = "Alle"
 if st.session_state.filters["province"] not in provinces:
     st.session_state.filters["province"] = "Alle"
+value_filter_columns = [VALUE_FILTER_NONE, *NUMBER_COLUMNS]
+if st.session_state.filters["value_filter_column"] not in value_filter_columns:
+    st.session_state.filters["value_filter_column"] = VALUE_FILTER_NONE
+if st.session_state.filters["value_filter_operator"] not in VALUE_FILTER_OPERATORS:
+    st.session_state.filters["value_filter_operator"] = "Niet leeg"
 
 with st.form("search_form"):
     col1, col2, col3, col4, col5 = st.columns([3, 1, 1.5, 2, 1.2])
@@ -186,17 +198,62 @@ with st.form("search_form"):
             directions,
             index=directions.index(st.session_state.filters["sort_direction"]),
         )
+
+    st.markdown("**Optionele waardefilter**")
+    value_col, operator_col, amount_col = st.columns([2.5, 2, 2])
+    with value_col:
+        value_filter_column = st.selectbox(
+            "Filter op financiële kolom",
+            value_filter_columns,
+            index=value_filter_columns.index(
+                st.session_state.filters["value_filter_column"]
+            ),
+        )
+    with operator_col:
+        value_filter_operator = st.selectbox(
+            "Voorwaarde",
+            VALUE_FILTER_OPERATORS,
+            index=VALUE_FILTER_OPERATORS.index(
+                st.session_state.filters["value_filter_operator"]
+            ),
+        )
+    with amount_col:
+        value_filter_value = st.text_input(
+            "Bedrag",
+            value=st.session_state.filters["value_filter_value"],
+            placeholder="Bijvoorbeeld: 100000 of 59,89",
+            help="Bij 'Niet leeg' wordt dit bedrag genegeerd.",
+        )
+
     submitted = st.form_submit_button("Zoeken", type="primary")
 
 if submitted:
-    st.session_state.filters = {
-        "search": search,
-        "year": year,
-        "province": province,
-        "sort_column": sort_column,
-        "sort_direction": sort_direction,
-    }
-    st.session_state.page = 1
+    filter_error = None
+    if value_filter_column == VALUE_FILTER_NONE:
+        value_filter_operator = "Niet leeg"
+        value_filter_value = ""
+    elif value_filter_operator == "Niet leeg":
+        value_filter_value = ""
+    else:
+        try:
+            parse_number_filter_value(value_filter_value)
+        except ValueError as error:
+            filter_error = str(error)
+
+    if filter_error:
+        st.error(filter_error)
+    else:
+        st.session_state.filters = {
+            "search": search,
+            "year": year,
+            "province": province,
+            "sort_column": sort_column,
+            "sort_direction": sort_direction,
+            "value_filter_column": value_filter_column,
+            "value_filter_operator": value_filter_operator,
+            "value_filter_value": value_filter_value,
+        }
+        st.session_state.page = 1
 
 active = st.session_state.filters
 fetch_start = time.perf_counter()
@@ -207,6 +264,9 @@ _diagnose(
     province=active["province"],
     sort_column=active["sort_column"],
     sort_direction=active["sort_direction"],
+    value_filter_column=active["value_filter_column"],
+    value_filter_operator=active["value_filter_operator"],
+    value_filter_has_amount=bool(active["value_filter_value"]),
     search_length=len(active["search"]),
     page=st.session_state.page,
 )

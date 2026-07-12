@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -40,6 +41,33 @@ DISPLAY_COLUMNS = [
     "Andere financiële opbrengsten vorig jaar (9441)",
 ]
 
+# De eerste zeven kolommen zijn identificatievelden; de overige zijn bedragen.
+NUMBER_COLUMNS = DISPLAY_COLUMNS[7:]
+VALUE_FILTER_NONE = "Geen extra filter"
+VALUE_FILTER_OPERATORS = (
+    "Niet leeg",
+    "Groter dan",
+    "Groter dan of gelijk aan",
+    "Kleiner dan",
+    "Kleiner dan of gelijk aan",
+    "Gelijk aan",
+)
+
+
+def parse_number_filter_value(value: object) -> float:
+    """Aanvaard zowel een Belgische decimale komma als een decimale punt."""
+    text = str(value).strip().replace(" ", "").replace(",", ".")
+    if not text:
+        raise ValueError("Vul een bedrag in voor de gekozen vergelijking.")
+    try:
+        number = float(text)
+    except ValueError as error:
+        raise ValueError("Gebruik een geldig bedrag, bijvoorbeeld 100000 of 59,89.") from error
+    if not math.isfinite(number):
+        raise ValueError("Gebruik een eindig bedrag, niet NaN of oneindig.")
+    return number
+
+
 def connect(db: Path) -> sqlite3.Connection:
     con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro&immutable=1", uri=True)
     con.execute("PRAGMA query_only = ON")
@@ -65,7 +93,14 @@ def fts_expression(text: str) -> str:
     return " AND ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
 
 
-def build_query(search: str, year: str, province: str) -> tuple[str, list[object]]:
+def build_query(
+    search: str,
+    year: str,
+    province: str,
+    value_filter_column: str = VALUE_FILTER_NONE,
+    value_filter_operator: str = "Niet leeg",
+    value_filter_value: object = "",
+) -> tuple[str, list[object]]:
     joins: list[str] = []
     conditions: list[str] = []
     params: list[object] = []
@@ -81,6 +116,26 @@ def build_query(search: str, year: str, province: str) -> tuple[str, list[object
     if province != "Alle":
         conditions.append('d."Provincie" = ?')
         params.append(province)
+
+    if value_filter_column != VALUE_FILTER_NONE:
+        if value_filter_column not in NUMBER_COLUMNS:
+            raise ValueError("Ongeldige kolom voor de waardefilter.")
+        column = value_filter_column.replace('"', '""')
+        if value_filter_operator == "Niet leeg":
+            conditions.append(f'd."{column}" IS NOT NULL')
+        else:
+            sql_operators = {
+                "Groter dan": ">",
+                "Groter dan of gelijk aan": ">=",
+                "Kleiner dan": "<",
+                "Kleiner dan of gelijk aan": "<=",
+                "Gelijk aan": "=",
+            }
+            operator = sql_operators.get(value_filter_operator)
+            if operator is None:
+                raise ValueError("Ongeldige vergelijking voor de waardefilter.")
+            conditions.append(f'd."{column}" {operator} ?')
+            params.append(parse_number_filter_value(value_filter_value))
 
     sql = 'FROM "Data" d '
     if joins:
@@ -121,8 +176,18 @@ def fetch_page(
     sort_column: str,
     sort_direction: str,
     page: int,
+    value_filter_column: str = VALUE_FILTER_NONE,
+    value_filter_operator: str = "Niet leeg",
+    value_filter_value: object = "",
 ) -> tuple[list[dict[str, object]], int, int]:
-    from_sql, params = build_query(search, year, province)
+    from_sql, params = build_query(
+        search,
+        year,
+        province,
+        value_filter_column,
+        value_filter_operator,
+        value_filter_value,
+    )
     select = ", ".join(f'd."{column}"' for column in DISPLAY_COLUMNS)
     order = build_order(sort_column, sort_direction)
 
@@ -144,8 +209,18 @@ def export_csv(
     province: str,
     sort_column: str,
     sort_direction: str,
+    value_filter_column: str = VALUE_FILTER_NONE,
+    value_filter_operator: str = "Niet leeg",
+    value_filter_value: object = "",
 ) -> tuple[bytes, int, bool]:
-    from_sql, params = build_query(search, year, province)
+    from_sql, params = build_query(
+        search,
+        year,
+        province,
+        value_filter_column,
+        value_filter_operator,
+        value_filter_value,
+    )
     select = ", ".join(f'd."{column}"' for column in DISPLAY_COLUMNS)
     order = build_order(sort_column, sort_direction)
     output = io.StringIO()
