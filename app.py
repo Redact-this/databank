@@ -113,10 +113,8 @@ def prepare_database(url: str) -> Path:
     return DB_PATH
 
 
-st.title("📊 Jaarrekeningen Databank")
+st.title("📊 Databank")
 st.write(
-    "Zoek in financiële kerncijfers uit Belgische jaarrekeningen. "
-    "Bedragen zijn in euro. Controleer belangrijke cijfers bij de oorspronkelijke NBB-bron."
 )
 
 try:
