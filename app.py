@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import faulthandler
 import os
+import platform
+import time
 import zipfile
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import requests
 import streamlit as st
 
@@ -25,10 +30,56 @@ DATA_DIR = Path("/tmp/jaarrekeningen")
 ZIP_PATH = DATA_DIR / "data.zip"
 DB_PATH = DATA_DIR / "data.db"
 
+
+try:
+    # Bij een native crash (zoals SIGSEGV) verschijnen de actieve Python-frames
+    # in de Streamlit-log. Een gewone try/except kan zo'n crash niet opvangen.
+    faulthandler.enable(all_threads=True)
+except (AttributeError, OSError, RuntimeError):
+    pass
+
+
+def _rss_mb() -> float | None:
+    """Lees het actuele procesgeheugen op Linux, indien beschikbaar."""
+    status = Path("/proc/self/status")
+    if not status.exists():
+        return None
+    try:
+        for line in status.read_text(encoding="utf-8").splitlines():
+            if line.startswith("VmRSS:"):
+                return round(int(line.split()[1]) / 1024, 1)
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _diagnose(event: str, **details: object) -> None:
+    """Schrijf één compacte regel die onmiddellijk in de Cloud-log verschijnt."""
+    velden = {
+        "event": event,
+        "pid": os.getpid(),
+        "rss_mb": _rss_mb(),
+        **details,
+    }
+    tekst = " ".join(f"{naam}={waarde!r}" for naam, waarde in velden.items())
+    print(f"[diagnose] {tekst}", flush=True)
+
+
 st.set_page_config(
     page_title="Jaarrekeningen Databank",
     page_icon="📊",
     layout="wide",
+)
+
+st.session_state.diagnostic_run = st.session_state.get("diagnostic_run", 0) + 1
+_diagnose(
+    "rerun_start",
+    run=st.session_state.diagnostic_run,
+    python=platform.python_version(),
+    streamlit=st.__version__,
+    pandas=pd.__version__,
+    numpy=np.__version__,
+    pyarrow=pa.__version__,
 )
 
 
@@ -77,7 +128,14 @@ except Exception as error:
     st.exception(error)
     st.stop()
 
+filter_start = time.perf_counter()
+_diagnose("filter_choices_start", run=st.session_state.diagnostic_run)
 years, provinces = filter_choices(db)
+_diagnose(
+    "filter_choices_done",
+    run=st.session_state.diagnostic_run,
+    seconds=round(time.perf_counter() - filter_start, 3),
+)
 
 if "page" not in st.session_state:
     st.session_state.page = 1
@@ -141,7 +199,26 @@ if submitted:
     st.session_state.page = 1
 
 active = st.session_state.filters
+fetch_start = time.perf_counter()
+_diagnose(
+    "fetch_page_start",
+    run=st.session_state.diagnostic_run,
+    year=active["year"],
+    province=active["province"],
+    sort_column=active["sort_column"],
+    sort_direction=active["sort_direction"],
+    search_length=len(active["search"]),
+    page=st.session_state.page,
+)
 rows, total, last_page = fetch_page(db, **active, page=st.session_state.page)
+_diagnose(
+    "fetch_page_done",
+    run=st.session_state.diagnostic_run,
+    seconds=round(time.perf_counter() - fetch_start, 3),
+    rows=len(rows),
+    total=total,
+    last_page=last_page,
+)
 st.session_state.page = min(st.session_state.page, last_page)
 st.markdown(
     f"**{total:,} resultaten** — pagina {st.session_state.page} van {last_page}".replace(",", ".")
@@ -162,15 +239,31 @@ text_columns = {
     "Bestandsnaam",
 }
 number_columns = [column for column in DISPLAY_COLUMNS if column not in text_columns]
+
+# Houd het schema bij elke rerun identiek. Zo krijgt de Arrow-serialisatie niet
+# afwisselend object-, integer- en floatkolommen naargelang de gekozen pagina.
+for column in text_columns:
+    frame[column] = frame[column].astype("string")
+for column in number_columns:
+    frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("float64")
+
+_diagnose(
+    "dataframe_render_start",
+    run=st.session_state.diagnostic_run,
+    rows=len(frame),
+    columns=len(frame.columns),
+    frame_kb=round(frame.memory_usage(index=True, deep=True).sum() / 1024, 1),
+)
 st.dataframe(
     frame,
     hide_index=True,
-    use_container_width=True,
+    width="stretch",
     column_config={
         column: st.column_config.NumberColumn(column, format="%.2f")
         for column in number_columns
     },
 )
+_diagnose("dataframe_render_done", run=st.session_state.diagnostic_run)
 
 previous, next_col, spacer = st.columns([1, 1, 6])
 with previous:
@@ -188,7 +281,16 @@ st.caption(
 )
 if st.button("Maak CSV van deze selectie"):
     with st.spinner("CSV wordt aangemaakt…"):
+        export_start = time.perf_counter()
+        _diagnose("export_start", run=st.session_state.diagnostic_run)
         csv_data, exported, truncated = export_csv(db, **active)
+        _diagnose(
+            "export_done",
+            run=st.session_state.diagnostic_run,
+            seconds=round(time.perf_counter() - export_start, 3),
+            rows=exported,
+            truncated=truncated,
+        )
     st.session_state.csv_data = csv_data
     st.session_state.csv_note = (
         f"{exported:,} rijen geëxporteerd.".replace(",", ".")
